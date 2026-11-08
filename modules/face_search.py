@@ -7,8 +7,7 @@ import sqlite3
 from sentence_transformers import SentenceTransformer
 
 class Face_search:
-    @staticmethod
-    def extreact_face(image_path):
+    def extreact_face(self,image_path):
         accepted_formats = ["jpg", "png", "jpeg", "webp"]
         if not os.path.isfile(image_path):
             return {
@@ -68,8 +67,7 @@ class Face_search:
             "message": f"Successfully extracted {len(faces)} faces."
         }
 
-    @staticmethod
-    def save_to_db(photo_path, face_data, db_path="../processed/faces.db"):
+    def save_to_db(self,photo_path, face_data, db_path="../processed/faces.db"):
         # face_data = list of (face_image_path, face_embedding)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path)
@@ -102,8 +100,7 @@ class Face_search:
         conn.commit()
         conn.close()
 
-    @staticmethod
-    def search_face(face_image_path, db_path="../processed/faces.db", threshold=0.4):
+    def search_face(self,face_image_path, db_path="../processed/faces.db", threshold=0.4):
         if not os.path.isfile(face_image_path):
             return {"found": False, "error": "Invalid image path"}
         # 1. get embedding of the query face

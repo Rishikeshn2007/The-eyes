@@ -32,7 +32,7 @@ class Semantic_search:
         conn.commit()
         conn.close()
 
-    def search(self, search_string, top_k=5):
+    def semantic_search(self, search_string, top_k=5):
         # text -> embedding
         q = self.model.encode_text([search_string], task="retrieval.query")[0]
         q = np.array(q, dtype=np.float32)
@@ -53,5 +53,5 @@ class Semantic_search:
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:top_k]
 
-s = Semantic_search()
-print(s.search("Person taking selfie"))
+#s = Semantic_search()
+#print(s.search("Person taking selfie"))
