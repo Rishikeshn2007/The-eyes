@@ -44,7 +44,7 @@ The-eyes/
 │   ├── schemas.py           # Request and response schemas
 │   ├── config.py            # Environment and path settings
 │   └── .env                 # Backend environment configuration
-├── frontend/                # React.js application (Nmap dark blue theme)
+├── frontend/                # React.js application (Dark blue theme)
 │   ├── src/                 # Views, components, context, and styles
 │   ├── index.html           # Root HTML entry with custom SVG favicon
 │   ├── package.json         # React & Vite dependencies

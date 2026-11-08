@@ -60,7 +60,7 @@ export const Navbar = ({ currentTab, onSelectTab }) => {
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="brand-title">The-Eyes</span>
-              <span className="brand-badge">Nmap Style</span>
+              <span className="brand-badge">Vision AI</span>
             </div>
             <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
               Neural Multimodal Retrieval

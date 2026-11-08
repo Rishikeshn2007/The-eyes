@@ -63,7 +63,7 @@ export const HomeView = ({ onNavigate }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '48px' }}>
-      {/* Hero Section with Nmap Tactical Aesthetics */}
+      {/* Hero Section */}
       <section
         className="panel radar-grid-bg"
         style={{
@@ -103,7 +103,7 @@ export const HomeView = ({ onNavigate }) => {
             }}
           >
             <NmapEyeLogo size={20} />
-            <span>THE-EYES &bull; NMAP SECURITY COLORWAY</span>
+            <span>THE-EYES &bull; NEURAL PHOTO RETRIEVAL PLATFORM</span>
           </div>
 
           <h1

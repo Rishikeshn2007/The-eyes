@@ -17,7 +17,7 @@ export const Footer = () => {
           <div className="dev-avatar">RN</div>
           <div className="dev-info">
             <h4>Rishikesh N</h4>
-            <p>Lead Developer & Architect &bull; The-Eyes</p>
+            <p>Developer & Architect &bull; The-Eyes</p>
           </div>
         </div>
 
@@ -44,7 +44,7 @@ export const Footer = () => {
           </a>
         </div>
 
-        {/* Nmap Theme Note */}
+        {/* System Version */}
         <div
           style={{
             display: 'flex',
@@ -56,7 +56,7 @@ export const Footer = () => {
           }}
         >
           <NmapEyeLogo size={18} />
-          <span>Styled with Nmap Cyber Eye Theme &bull; 2026</span>
+          <span>v5.1 &bull; 2026</span>
         </div>
       </div>
     </footer>

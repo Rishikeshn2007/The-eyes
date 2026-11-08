@@ -33,7 +33,7 @@ export const NmapEyeLogo = ({ size = 36, animated = true, className = '' }) => {
       {/* Background Glow */}
       <circle cx="60" cy="60" r="56" fill="url(#nmap-outer-glow)" />
 
-      {/* Outer Tactical Radar Ring */}
+      {/* Outer Ring */}
       <circle
         cx="60"
         cy="60"
@@ -44,7 +44,7 @@ export const NmapEyeLogo = ({ size = 36, animated = true, className = '' }) => {
         opacity="0.8"
       />
 
-      {/* Cyber Eye Outline - Outer contour */}
+      {/* Eye Outline - Outer contour */}
       <path
         d="M 12,60 Q 60,18 108,60 Q 60,102 12,60 Z"
         fill="#071224"
@@ -88,7 +88,7 @@ export const NmapEyeLogo = ({ size = 36, animated = true, className = '' }) => {
         strokeWidth="1.8"
       />
 
-      {/* Tactical Center Pupil */}
+      {/* Center Pupil */}
       <circle cx="60" cy="60" r="8" fill="#040b17" stroke="#38bdf8" strokeWidth="1" />
       <circle cx="60" cy="60" r="4" fill="#38bdf8" />
       

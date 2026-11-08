@@ -1,10 +1,10 @@
 # The-Eyes Frontend
 
-A React.js application for **The-Eyes** photo retrieval engine, designed with an Nmap-inspired cyber dark blue theme.
+A React.js application for **The-Eyes** photo retrieval engine, built with a modern dark blue interface.
 
 ## Features
 
-1. **Overview / Home**: Interactive introduction to the system with tactical radar grid aesthetics, tech stack breakdown, and developer card.
+1. **Overview / Home**: Interactive introduction to the system with neural visual aesthetics, tech stack breakdown, and developer card.
 2. **All Photos Gallery**: View all indexed photos with face count badges, search filtering by filename, and one-click "Add All to Favorites".
 3. **Biometric Face Search**: Upload an existing reference photo or capture a live webcam selfie with a face alignment reticle. Configurable similarity threshold slider (0.10 to 0.90) and ranked gallery results with match scores.
 4. **Semantic Search**: Text prompt search powered by Jina CLIP v2 multimodal neural embeddings with prompt suggestions and top-k slider.
