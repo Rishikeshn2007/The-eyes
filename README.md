@@ -37,6 +37,12 @@ A lightweight, local multimodal photo indexing and search engine supporting **fa
 
 ```text
 The-eyes/
+├── backend/                 # FastAPI backend server
+│   ├── main.py              # API routes and application lifespan
+│   ├── services.py          # Unified model and search service
+│   ├── schemas.py           # Request and response schemas
+│   ├── config.py            # Environment and path settings
+│   └── .env                 # Backend environment configuration
 ├── modules/
 │   ├── face_search.py       # Face detection, extraction, and facial similarity search
 │   ├── semantic_search.py   # Text-to-image semantic search via Jina CLIP
@@ -61,7 +67,15 @@ Install required dependencies:
 pip install torch torchvision transformers insightface onnxruntime opencv-python pillow sentence-transformers numpy
 ```
 
-> **Note**: InsightFace (`buffalo_l`) and Jina CLIP v2 weights will automatically download to your local cache upon first execution.
+### 2. Running the Backend Server
+
+Start the FastAPI application:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Interactive documentation: `http://localhost:8000/docs`
 
 ---
 
