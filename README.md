@@ -20,6 +20,7 @@ A lightweight, local multimodal photo indexing and search engine supporting **fa
 - **Multimodal Semantic Search**: Natural-language text-to-image retrieval powered by Jina CLIP v2 (`jinaai/jina-clip-v2`).
 - **Hybrid Retrieval**: Filters candidate photos by facial identity, then ranks matching scenes using semantic query relevance.
 - **Embedded Vector Storage**: Stores metadata and raw embedding vectors directly in SQLite, eliminating the need for external vector database infrastructure.
+- **Batch Image Indexer**: Index an entire folder of images or upload multiple files at once — extracts faces, generates CLIP & Jina CLIP v2 embeddings, and upserts all records into the database in one operation.
 
 ---
 
@@ -43,6 +44,11 @@ The-eyes/
 │   ├── schemas.py           # Request and response schemas
 │   ├── config.py            # Environment and path settings
 │   └── .env                 # Backend environment configuration
+├── frontend/                # React.js application (Nmap dark blue theme)
+│   ├── src/                 # Views, components, context, and styles
+│   ├── index.html           # Root HTML entry with custom SVG favicon
+│   ├── package.json         # React & Vite dependencies
+│   └── vite.config.js       # Vite dev server with backend proxy
 ├── modules/
 │   ├── face_search.py       # Face detection, extraction, and facial similarity search
 │   ├── semantic_search.py   # Text-to-image semantic search via Jina CLIP
@@ -76,6 +82,18 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Interactive documentation: `http://localhost:8000/docs`
+
+### 3. Running the React Frontend
+
+In a separate terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The UI will be accessible at: `http://localhost:5173`
 
 ---
 

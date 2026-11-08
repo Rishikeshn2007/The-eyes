@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import tempfile
@@ -7,12 +8,14 @@ from typing import Optional, List, Union
 
 from fastapi import FastAPI, File, UploadFile, Form, Query, HTTPException, status, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import (
     HOST,
     PORT,
     DB_PATH,
+    PROJECT_ROOT,
     DEFAULT_THRESHOLD,
     DEFAULT_TOP_K,
     ALLOWED_EXTENSIONS,
@@ -24,8 +27,11 @@ from backend.schemas import (
     SemanticSearchResponse,
     HybridSearchResponse,
     SearchMatch,
+    BatchFolderRequest,
+    BatchFolderResponse,
+    BatchItemResult,
 )
-from backend.services import get_search_service, check_database_health
+from backend.services import get_search_service, check_database_health, get_all_indexed_photos
 
 
 @asynccontextmanager
@@ -55,6 +61,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure static directories exist and mount them
+images_dir = PROJECT_ROOT / "processed" / "images"
+faces_dir = PROJECT_ROOT / "processed" / "faces"
+images_dir.mkdir(parents=True, exist_ok=True)
+faces_dir.mkdir(parents=True, exist_ok=True)
+
+app.mount("/images", StaticFiles(directory=str(images_dir)), name="images")
+app.mount("/faces", StaticFiles(directory=str(faces_dir)), name="faces")
+
 
 def _validate_image_file(file: UploadFile) -> str:
     """Validates uploaded image file extension and returns normalized suffix."""
@@ -73,6 +88,11 @@ def _save_upload_to_temp(file: UploadFile, suffix: str) -> str:
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         shutil.copyfileobj(file.file, tmp)
         return tmp.name
+
+
+def _get_service():
+    """Safely retrieves the search service instance from app.state or fallback."""
+    return getattr(app.state, "search_service", None) or get_search_service()
 
 
 @app.get("/", tags=["Info"])
@@ -133,6 +153,25 @@ def health_status(response: Response):
     )
 
 
+@app.get(
+    "/photos",
+    tags=["Photos"],
+    summary="List all indexed photos in the gallery",
+)
+@app.get(
+    "/all-photos",
+    tags=["Photos"],
+    summary="Alias for /photos",
+)
+def get_photos_endpoint():
+    photos = get_all_indexed_photos()
+    return {
+        "status": True,
+        "count": len(photos),
+        "photos": photos,
+    }
+
+
 @app.post(
     "/face-search",
     response_model=FaceSearchResponse,
@@ -147,7 +186,7 @@ async def face_search_endpoint(
     temp_path = _save_upload_to_temp(file, suffix)
 
     try:
-        service = app.state.search_service or get_search_service()
+        service = _get_service()
         raw_result = service.run_face_search(image_path=temp_path, threshold=threshold)
 
         if not raw_result.get("found", False):
@@ -162,7 +201,15 @@ async def face_search_endpoint(
 
         matches_data = raw_result.get("photos", [])
         photo_paths = [m["photo_path"] for m in matches_data]
-        results = [SearchMatch(photo_path=m["photo_path"], score=float(m["score"])) for m in matches_data]
+        results = [
+            SearchMatch(
+                photo_path=m["photo_path"],
+                score=float(m["score"]),
+                filename=os.path.basename(m["photo_path"]),
+                url=f"/images/{os.path.basename(m['photo_path'])}",
+            )
+            for m in matches_data
+        ]
 
         return FaceSearchResponse(
             status=True,
@@ -215,11 +262,19 @@ async def semantic_search_endpoint(
         )
 
     try:
-        service = app.state.search_service or get_search_service()
+        service = _get_service()
         raw_results = service.run_semantic_search(search_string=query_text.strip(), top_k=limit)
 
         photo_paths = [p for p, _ in raw_results]
-        results = [SearchMatch(photo_path=p, score=float(s)) for p, s in raw_results]
+        results = [
+            SearchMatch(
+                photo_path=p,
+                score=float(s),
+                filename=os.path.basename(p),
+                url=f"/images/{os.path.basename(p)}",
+            )
+            for p, s in raw_results
+        ]
 
         return SemanticSearchResponse(
             status=True,
@@ -247,11 +302,19 @@ def semantic_search_get_endpoint(
     top_k: int = Query(DEFAULT_TOP_K, ge=1, le=100, description="Maximum results to return"),
 ):
     try:
-        service = app.state.search_service or get_search_service()
+        service = _get_service()
         raw_results = service.run_semantic_search(search_string=text.strip(), top_k=top_k)
 
         photo_paths = [p for p, _ in raw_results]
-        results = [SearchMatch(photo_path=p, score=float(s)) for p, s in raw_results]
+        results = [
+            SearchMatch(
+                photo_path=p,
+                score=float(s),
+                filename=os.path.basename(p),
+                url=f"/images/{os.path.basename(p)}",
+            )
+            for p, s in raw_results
+        ]
 
         return SemanticSearchResponse(
             status=True,
@@ -284,7 +347,7 @@ async def hybrid_search_endpoint(
     temp_path = _save_upload_to_temp(file, suffix)
 
     try:
-        service = app.state.search_service or get_search_service()
+        service = _get_service()
         raw_result = service.run_hybrid_search(
             reference_image=temp_path,
             text=text.strip(),
@@ -306,7 +369,15 @@ async def hybrid_search_endpoint(
 
         # raw_result is list of (photo_path, score)
         photo_paths = [p for p, _ in raw_result]
-        results = [SearchMatch(photo_path=p, score=float(s)) for p, s in raw_result]
+        results = [
+            SearchMatch(
+                photo_path=p,
+                score=float(s),
+                filename=os.path.basename(p),
+                url=f"/images/{os.path.basename(p)}",
+            )
+            for p, s in raw_result
+        ]
 
         return HybridSearchResponse(
             status=True,
@@ -325,3 +396,155 @@ async def hybrid_search_endpoint(
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+@app.post(
+    "/batch-index-folder",
+    response_model=BatchFolderResponse,
+    tags=["Ingestion"],
+    summary="Scan a source folder on disk, extract faces, and convert images into vector embeddings",
+)
+async def batch_index_folder_endpoint(
+    request: Request,
+    folder_path: Optional[str] = Form(None, description="Folder path on disk via Form"),
+):
+    target_path = folder_path
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            target_path = body.get("folder_path") or body.get("path")
+        except Exception:
+            pass
+
+    if not target_path or not str(target_path).strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing 'folder_path' in request body",
+        )
+
+    try:
+        service = _get_service()
+        res = service.batch_index_folder(str(target_path).strip())
+        return res
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch indexing failed: {str(exc)}",
+        )
+
+
+@app.post(
+    "/batch-index-folder-stream",
+    tags=["Ingestion"],
+    summary="Scan a source folder on disk with real-time SSE progress streaming",
+)
+@app.get(
+    "/batch-index-folder-stream",
+    tags=["Ingestion"],
+    summary="Scan a source folder on disk with real-time SSE progress streaming (GET)",
+)
+async def batch_index_folder_stream_endpoint(
+    request: Request,
+    folder_path: Optional[str] = Query(None, description="Source folder path via Query param"),
+):
+    target_path = folder_path
+    if not target_path:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                body = await request.json()
+                target_path = body.get("folder_path") or body.get("path")
+            except Exception:
+                pass
+        elif "form" in content_type:
+            try:
+                form = await request.form()
+                target_path = form.get("folder_path") or form.get("path")
+            except Exception:
+                pass
+
+    if not target_path or not str(target_path).strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing 'folder_path' parameter or JSON body",
+        )
+
+    def event_stream():
+        service = _get_service()
+        for event in service.batch_index_folder_stream(str(target_path).strip()):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post(
+    "/batch-upload",
+    response_model=BatchFolderResponse,
+    tags=["Ingestion"],
+    summary="Upload multiple images at once to convert into vector embeddings",
+)
+async def batch_upload_endpoint(
+    files: List[UploadFile] = File(..., description="Array of image files to convert and index"),
+):
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files uploaded",
+        )
+
+    service = _get_service()
+    processed_items = []
+    total_faces = 0
+    success_count = 0
+
+    for file in files:
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS:
+            processed_items.append({
+                "success": False,
+                "filename": file.filename or "unknown",
+                "error": f"Invalid format '{suffix}'",
+            })
+            continue
+
+        temp_path = _save_upload_to_temp(file, suffix)
+        try:
+            p = Path(temp_path)
+            orig_name = file.filename or p.name
+            target_named_path = p.parent / orig_name
+            shutil.move(temp_path, target_named_path)
+
+            res = service.index_single_image(str(target_named_path))
+            processed_items.append(res)
+            if res.get("success"):
+                success_count += 1
+                total_faces += res.get("faces_detected", 0)
+
+            if target_named_path.exists():
+                os.remove(target_named_path)
+        except Exception as e:
+            processed_items.append({
+                "success": False,
+                "filename": file.filename or "unknown",
+                "error": str(e),
+            })
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    return BatchFolderResponse(
+        status=True,
+        folder_path="Direct Multi-File Upload",
+        total_found=len(files),
+        total_processed=success_count,
+        total_faces=total_faces,
+        processed=processed_items,
+    )

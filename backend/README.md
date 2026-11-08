@@ -156,3 +156,64 @@ curl -X POST "http://localhost:8000/hybrid-search" \
   "error": null
 }
 ```
+
+### 5. Batch Index — Folder Path
+Scan a local folder and index all images (`.jpg`, `.jpeg`, `.png`, `.webp`) in one shot.
+
+- **Endpoint**: `POST /batch-index-folder`
+- **Content-Type**: `application/json`
+- **Body**:
+  - `folder_path`: Absolute or relative path to the source image folder
+- **Example cURL**:
+```bash
+curl -X POST "http://localhost:8000/batch-index-folder" \
+  -H "Content-Type: application/json" \
+  -d '{"folder_path": "test-images"}'
+```
+- **Response**:
+```json
+{
+  "status": true,
+  "folder_path": "test-images",
+  "found": 5,
+  "processed": 5,
+  "failed": 0,
+  "total_faces": 127,
+  "items": [
+    {"filename": "chinmay.png", "path": "test-images/chinmay.png", "status": "success", "faces_found": 1, "error": null},
+    {"filename": "group-1.jpeg", "path": "test-images/group-1.jpeg", "status": "success", "faces_found": 46, "error": null}
+  ],
+  "error": null
+}
+```
+
+### 6. Batch Index — File Upload
+Upload multiple image files directly for immediate indexing.
+
+- **Endpoint**: `POST /batch-upload`
+- **Content-Type**: `multipart/form-data`
+- **Form Parameters**:
+  - `files`: One or more image files
+- **Example cURL**:
+```bash
+curl -X POST "http://localhost:8000/batch-upload" \
+  -F "files=@test-images/chinmay.png" \
+  -F "files=@test-images/group-1.jpeg"
+```
+- **Response**: Same structure as `/batch-index-folder`.
+
+### 7. Photo Gallery
+Retrieve all indexed photos from the database.
+
+- **Endpoint**: `GET /photos`
+- **Response**:
+```json
+{
+  "status": true,
+  "count": 5,
+  "photos": [
+    {"id": 1, "photo_path": "../processed/images/group-1.jpeg", "embedding": null}
+  ],
+  "error": null
+}
+```

@@ -14,6 +14,8 @@ class HealthResponse(BaseModel):
 class SearchMatch(BaseModel):
     photo_path: str = Field(..., description="Path to the matching indexed photo")
     score: float = Field(..., description="Similarity confidence score")
+    filename: Optional[str] = Field(None, description="Basename of the photo")
+    url: Optional[str] = Field(None, description="Direct URL path to the image")
 
 
 class FaceSearchResponse(BaseModel):
@@ -47,3 +49,27 @@ class HybridSearchResponse(BaseModel):
     photos: List[str] = Field(default_factory=list, description="Array of matching photo file paths")
     results: List[SearchMatch] = Field(default_factory=list, description="Ranked match details including similarity scores")
     error: Optional[str] = Field(None, description="Error message if face was not found or search failed")
+
+
+class BatchFolderRequest(BaseModel):
+    folder_path: str = Field(..., min_length=1, description="Path to folder containing source images")
+
+
+class BatchItemResult(BaseModel):
+    success: bool
+    filename: str
+    photo_path: Optional[str] = None
+    url: Optional[str] = None
+    faces_detected: int = 0
+    error: Optional[str] = None
+
+
+class BatchFolderResponse(BaseModel):
+    status: bool = Field(..., description="Whether the batch operation was executed")
+    folder_path: Optional[str] = Field(None, description="Path to scanned folder")
+    total_found: int = Field(0, description="Total image files found")
+    total_processed: int = Field(0, description="Total images converted and indexed")
+    total_faces: int = Field(0, description="Total faces detected and extracted")
+    message: Optional[str] = Field(None, description="Summary or informational message")
+    error: Optional[str] = Field(None, description="Error message if batch execution failed")
+    processed: List[BatchItemResult] = Field(default_factory=list, description="Itemized results for each image")
