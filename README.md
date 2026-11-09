@@ -58,6 +58,7 @@ The-eyes/
 │   ├── images/              # Archived source images
 │   └── faces.db             # SQLite database storing photos, faces, and embeddings
 ├── test-images/             # Sample query and gallery images
+├── normalize.py             # Database vector normalization utility
 └── README.md
 ```
 
@@ -71,6 +72,14 @@ Install required dependencies:
 
 ```bash
 pip install torch torchvision transformers insightface onnxruntime opencv-python pillow sentence-transformers numpy
+```
+
+### 2. Pre-computing Normalized Embeddings (Optional Migration)
+
+For high-speed direct dot-product search, pre-calculate unit vectors across existing database entries:
+
+```bash
+python normalize.py
 ```
 
 ### 2. Running the Backend Server
@@ -156,11 +165,11 @@ print(results)
 
 ## Database Schema (`faces.db`)
 
-The SQLite database contains three tables:
+The SQLite database contains three tables with both raw embeddings and pre-normalized unit vectors for direct dot product acceleration:
 
-- **`photos`**: Stores original photo paths and CLIP image embeddings.
-- **`faces`**: Stores individual face crop paths, normalized face embeddings, and foreign keys referencing `photos`.
-- **`semantic`**: Stores photo paths and normalized Jina CLIP embeddings for text query matching.
+- **`photos`**: Stores original photo paths, raw CLIP embeddings (`embedding`), and unit-normalized vectors (`normalized`).
+- **`faces`**: Stores individual face crop paths, raw embeddings (`embedding`), unit-normalized vectors (`normalized`), and foreign keys referencing `photos`.
+- **`semantic`**: Stores photo paths, raw Jina CLIP embeddings (`embedding`), and unit-normalized vectors (`normalized`).
 
 ---
 

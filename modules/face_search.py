@@ -6,8 +6,9 @@ import cv2
 import sqlite3
 from sentence_transformers import SentenceTransformer
 
+
 class Face_search:
-    def extreact_face(self,image_path):
+    def extreact_face(self, image_path):
         accepted_formats = ["jpg", "png", "jpeg", "webp"]
         if not os.path.isfile(image_path):
             return {
@@ -33,9 +34,7 @@ class Face_search:
                 "error": "No faces were found"
             }
         
-        # os.path.basename("C:\\Users\\...\\group.jpg") -> "group.jpg"
         base_filename = os.path.basename(image_path) 
-        # os.path.splitext("group.jpg")[0] -> "group" (removes extension)
         filename_without_ext = os.path.splitext(base_filename)[0] 
         
         # 1. Save original image copy safely using the clean filename
@@ -56,19 +55,27 @@ class Face_search:
             
             cropped_face = img[y1:y2, x1:x2]
             
-            # --- IDENTIFIABLE NAMING STRATEGY ---
-            # Output example: "../processed/faces/group_face_1.png"
             file_name = f"{faces_output_dir}/{filename_without_ext}_face_{idx + 1}.png"
-            face_data.append((file_name, face.normed_embedding))
+            raw_emb = face.embedding if hasattr(face, "embedding") and face.embedding is not None else face.normed_embedding
+            norm_emb = face.normed_embedding if hasattr(face, "normed_embedding") and face.normed_embedding is not None else (raw_emb / np.linalg.norm(raw_emb))
+            face_data.append((file_name, raw_emb, norm_emb))
             cv2.imwrite(file_name, cropped_face)
-        Face_search.save_to_db(f"{original_output_dir}/{base_filename}", face_data)
+            
+        self.save_to_db(f"{original_output_dir}/{base_filename}", face_data)
         return {
             "processed": True,
             "message": f"Successfully extracted {len(faces)} faces."
         }
 
-    def save_to_db(self,photo_path, face_data, db_path="../processed/faces.db"):
-        # face_data = list of (face_image_path, face_embedding)
+    # Spelling alias for convenience
+    extract_face = extreact_face
+
+    def save_to_db(self, photo_path, face_data, db_path="../processed/faces.db"):
+        """
+        Stores original embeddings and pre-computes L2-normalized vectors in
+        the 'normalized' column.
+        face_data can be a list of (face_path, raw_emb) or (face_path, raw_emb, norm_emb).
+        """
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
@@ -76,72 +83,99 @@ class Face_search:
         cur.execute("""CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_path TEXT,
-            embedding BLOB)""")
+            embedding BLOB,
+            normalized BLOB)""")
 
         cur.execute("""CREATE TABLE IF NOT EXISTS faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_id INTEGER,
             face_path TEXT,
             embedding BLOB,
+            normalized BLOB,
             FOREIGN KEY (photo_id) REFERENCES photos(id))""")
 
-        # group photo embedding from CLIP model
+        # Generate group photo embedding from CLIP model
         clip = SentenceTransformer("clip-ViT-B-32")
         photo_embedding = clip.encode(Image.open(photo_path).convert("RGB"))
+        photo_embedding = np.array(photo_embedding, dtype=np.float32)
+        p_norm = np.linalg.norm(photo_embedding)
+        norm_photo_embedding = (photo_embedding / p_norm).astype(np.float32) if p_norm > 0 else photo_embedding
 
-        cur.execute("INSERT INTO photos (photo_path, embedding) VALUES (?, ?)",
-                    (photo_path, photo_embedding.astype(np.float32).tobytes()))
+        cur.execute(
+            "INSERT INTO photos (photo_path, embedding, normalized) VALUES (?, ?, ?)",
+            (photo_path, photo_embedding.tobytes(), norm_photo_embedding.tobytes())
+        )
         photo_id = cur.lastrowid
 
-        for face_path, emb in face_data:
-            cur.execute("INSERT INTO faces (photo_id, face_path, embedding) VALUES (?, ?, ?)",
-                        (photo_id, face_path, emb.astype(np.float32).tobytes()))
+        for item in face_data:
+            if len(item) == 3:
+                face_path, raw_emb, norm_emb = item
+            else:
+                face_path, raw_emb = item
+                r_arr = np.array(raw_emb, dtype=np.float32)
+                rn = np.linalg.norm(r_arr)
+                norm_emb = (r_arr / rn).astype(np.float32) if rn > 0 else r_arr
+
+            raw_arr = np.array(raw_emb, dtype=np.float32)
+            norm_arr = np.array(norm_emb, dtype=np.float32)
+
+            cur.execute(
+                "INSERT INTO faces (photo_id, face_path, embedding, normalized) VALUES (?, ?, ?, ?)",
+                (photo_id, face_path, raw_arr.tobytes(), norm_arr.tobytes())
+            )
 
         conn.commit()
         conn.close()
 
-    def search_face(self,face_image_path, db_path="../processed/faces.db", threshold=0.4):
+    def search_face(self, face_image_path, db_path="../processed/faces.db", threshold=0.4):
+        """
+        Performs high-speed facial search using pre-normalized vectors and numpy dot product.
+        Since vectors are unit-normalized, dot product equals cosine similarity.
+        """
         if not os.path.isfile(face_image_path):
             return {"found": False, "error": "Invalid image path"}
-        # 1. get embedding of the query face
+
+        # 1. Get embedding of query face and ensure it is normalized
         app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
         app.prepare(ctx_id=0, det_size=(640, 640))
         img = cv2.imread(face_image_path)
-        # add border so tight face crops are still detected
         img = cv2.copyMakeBorder(img, 50, 50, 50, 50, cv2.BORDER_CONSTANT, value=(0, 0, 0))
         faces = app.get(img)
         if not faces:
             return {"found": False, "error": "No face found in query image"}
-        query_emb = faces[0].normed_embedding
-        # 2. compare with every stored face
+
+        query_emb = np.array(faces[0].normed_embedding, dtype=np.float32)
+        q_norm = np.linalg.norm(query_emb)
+        if q_norm > 0:
+            query_emb = query_emb / q_norm
+
+        # 2. Fetch pre-normalized embeddings from database (fallback to embedding if needed)
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
-        cur.execute("""SELECT photos.photo_path, faces.embedding
+        cur.execute("""SELECT photos.photo_path, COALESCE(faces.normalized, faces.embedding)
                        FROM faces JOIN photos ON faces.photo_id = photos.id""")
         rows = cur.fetchall()
         conn.close()
-        best_score = -1
-        matches = {}  # photo_path -> best score in that photo
-        for photo_path, blob in rows:
-            stored_emb = np.frombuffer(blob, dtype=np.float32)
-            score = float(np.dot(query_emb, stored_emb))
-            if score >= threshold:
-                # keep the highest score if a photo has several matching faces
-                matches[photo_path] = max(score, matches.get(photo_path, 0))
+
+        if not rows:
+            return {"found": False, "error": "No matching face found"}
+
+        # 3. Vectorized dot product using numpy for maximum performance
+        photo_paths = [r[0] for r in rows]
+        emb_matrix = np.frombuffer(b"".join(r[1] for r in rows), dtype=np.float32).reshape(len(rows), -1)
+        scores = np.dot(emb_matrix, query_emb)
+
+        matches = {}  # photo_path -> highest score in that photo
+        for photo_path, score in zip(photo_paths, scores):
+            score_val = float(score)
+            if score_val >= threshold:
+                matches[photo_path] = max(score_val, matches.get(photo_path, 0.0))
 
         if not matches:
             return {"found": False, "error": "No matching face found"}
 
-        # sort best match first
         results = sorted(matches.items(), key=lambda x: x[1], reverse=True)
         return {
             "found": True,
             "photos": [{"photo_path": p, "score": s} for p, s in results]
         }
-    
-#path ="..\\test-images\\group-3.jpeg"
-#result=Face_search.extreact_face(path)
-#print(result)
-#test_path="..\\test-images\\chinmay.png"
-#result = Face_search.search_face(test_path)
-#print(result)

@@ -131,8 +131,13 @@ def health_status(response: Response):
         errors.append(error_msg or "Database unreachable")
 
     # Check search service instance
-    search_service_ready = hasattr(app.state, "search_service") and app.state.search_service is not None
-    if not search_service_ready:
+    try:
+        search_service_ready = _get_service() is not None
+    except Exception as e:
+        search_service_ready = False
+        errors.append(f"Search service error: {str(e)}")
+
+    if not search_service_ready and not any("Search service" in err for err in errors):
         errors.append("Search service model not initialized")
 
     is_healthy = len(errors) == 0

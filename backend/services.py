@@ -99,12 +99,16 @@ class SearchService(Hybrid_search):
                 cv2.imwrite(face_file_path, cropped_face)
 
                 stored_face_path = f"../processed/faces/{face_filename}"
-                face_data.append((stored_face_path, face.normed_embedding))
+                raw_emb = face.embedding if hasattr(face, "embedding") and face.embedding is not None else face.normed_embedding
+                norm_emb = face.normed_embedding if hasattr(face, "normed_embedding") and face.normed_embedding is not None else (raw_emb / np.linalg.norm(raw_emb))
+                face_data.append((stored_face_path, raw_emb, norm_emb))
 
         # 2. Photos table & Faces table storage
         clip = self._get_clip_model()
         pil_img = Image.open(dest_img_path).convert("RGB")
-        photo_embedding = clip.encode(pil_img)
+        photo_embedding = np.array(clip.encode(pil_img), dtype=np.float32)
+        p_norm = np.linalg.norm(photo_embedding)
+        norm_photo_embedding = (photo_embedding / p_norm).astype(np.float32) if p_norm > 0 else photo_embedding
 
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         conn = sqlite3.connect(self.db_path)
@@ -113,13 +117,15 @@ class SearchService(Hybrid_search):
         cur.execute("""CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_path TEXT,
-            embedding BLOB)""")
+            embedding BLOB,
+            normalized BLOB)""")
 
         cur.execute("""CREATE TABLE IF NOT EXISTS faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_id INTEGER,
             face_path TEXT,
             embedding BLOB,
+            normalized BLOB,
             FOREIGN KEY (photo_id) REFERENCES photos(id))""")
 
         # Upsert photo in photos table
@@ -127,33 +133,44 @@ class SearchService(Hybrid_search):
         row = cur.fetchone()
         if row:
             photo_id = row[0]
-            cur.execute("UPDATE photos SET embedding = ? WHERE id = ?",
-                        (photo_embedding.astype(np.float32).tobytes(), photo_id))
+            cur.execute("""UPDATE photos SET
+                           embedding = ?, normalized = ?
+                           WHERE id = ?""",
+                        (photo_embedding.tobytes(), norm_photo_embedding.tobytes(), photo_id))
             cur.execute("DELETE FROM faces WHERE photo_id = ?", (photo_id,))
         else:
-            cur.execute("INSERT INTO photos (photo_path, embedding) VALUES (?, ?)",
-                        (stored_photo_path, photo_embedding.astype(np.float32).tobytes()))
+            cur.execute("""INSERT INTO photos (photo_path, embedding, normalized)
+                           VALUES (?, ?, ?)""",
+                        (stored_photo_path, photo_embedding.tobytes(), norm_photo_embedding.tobytes()))
             photo_id = cur.lastrowid
 
-        for face_path, emb in face_data:
-            cur.execute("INSERT INTO faces (photo_id, face_path, embedding) VALUES (?, ?, ?)",
-                        (photo_id, face_path, emb.astype(np.float32).tobytes()))
+        for face_path, raw_f, norm_f in face_data:
+            cur.execute("""INSERT INTO faces (photo_id, face_path, embedding, normalized)
+                           VALUES (?, ?, ?, ?)""",
+                        (photo_id, face_path, np.array(raw_f, dtype=np.float32).tobytes(), np.array(norm_f, dtype=np.float32).tobytes()))
 
         # 3. Semantic table storage (Jina CLIP v2)
         cur.execute("""CREATE TABLE IF NOT EXISTS semantic (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_path TEXT,
-            embedding BLOB)""")
+            embedding BLOB,
+            normalized BLOB)""")
 
-        semantic_emb = self.img_to_embedding(dest_img_path)
+        semantic_raw = np.array(self.model.encode_image([dest_img_path])[0], dtype=np.float32)
+        s_norm = np.linalg.norm(semantic_raw)
+        semantic_norm = (semantic_raw / s_norm).astype(np.float32) if s_norm > 0 else semantic_raw
+
         cur.execute("SELECT id FROM semantic WHERE photo_path = ?", (stored_photo_path,))
         sem_row = cur.fetchone()
         if sem_row:
-            cur.execute("UPDATE semantic SET embedding = ? WHERE id = ?",
-                        (semantic_emb.tobytes(), sem_row[0]))
+            cur.execute("""UPDATE semantic SET
+                           embedding = ?, normalized = ?
+                           WHERE id = ?""",
+                        (semantic_raw.tobytes(), semantic_norm.tobytes(), sem_row[0]))
         else:
-            cur.execute("INSERT INTO semantic (photo_path, embedding) VALUES (?, ?)",
-                        (stored_photo_path, semantic_emb.tobytes()))
+            cur.execute("""INSERT INTO semantic (photo_path, embedding, normalized)
+                           VALUES (?, ?, ?)""",
+                        (stored_photo_path, semantic_raw.tobytes(), semantic_norm.tobytes()))
 
         conn.commit()
         conn.close()
